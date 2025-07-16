@@ -15,6 +15,7 @@ import {
   Platform,
   ScrollView,
   Modal,
+  NativeModules,
   Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -23,6 +24,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { capturePhoto } from '../utils/capturePhoto';
 import axios from 'axios';
 import { RootStackParamList } from '../../App';
+import { SERVER_URL } from '../utils/constants';
+import RNFS from 'react-native-fs';
 
 type EnrollmentScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Enrollment'>;
 
@@ -39,6 +42,33 @@ export default function EnrollmentScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const successModalAnim = useRef(new Animated.Value(0)).current;
   const successScaleAnim = useRef(new Animated.Value(0.8)).current;
+
+
+  function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0,
+          v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+  const { FaceAuth } = NativeModules as {
+    FaceAuth: {
+      enroll(userId: string, name: string, imageB64: string): Promise<string>;
+      verify(userId: string, imageB64: string): Promise<string>;
+    }
+  }
+
+ function uriToBase64(uri: string): Promise<string> {
+  if (uri.startsWith('data:')) {
+    // data:image/jpeg;base64,/9j/4… → return the "/9j/4…" part
+    return Promise.resolve(uri.split(',')[1]);
+  }
+  // file:///storage/...  →  /storage/...
+  const path = uri.replace(/^file:\/\//, '');
+  return RNFS.readFile(path, 'base64');
+}
+
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -81,31 +111,58 @@ export default function EnrollmentScreen() {
     }
   };
 
-  const handleEnrollment = async () => {
-    if (!userName.trim()) {
-      Alert.alert('Error', 'Please enter a name');
-      return;
-    }
+  //  const handleEnrollment = async () => {
+  //   if (!userName.trim()) {
+  //     Alert.alert('Error', 'Please enter a name');
+  //     return;
+  //   }
 
-    if (!capturedImage) {
-      Alert.alert('Error', 'Please capture a photo');
-      return;
-    }
+  //   if (!capturedImage) {
+  //     Alert.alert('Error', 'Please capture a photo');
+  //     return;
+  //   }
 
-    setLoading(true);
-    try {
-      const response = await axios.post('http://192.168.0.105:5000/enroll', {
-        name: userName,
-        image: capturedImage,
-      });
-      
-      setShowSuccessModal(true);
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to enroll user');
-    } finally {
-      setLoading(false);
-    }
-  };
+  //   setLoading(true);
+  //   try {
+  //     const response = await axios.post(`${SERVER_URL}/enroll`, {
+  //         name: userName,
+  //       image: capturedImage,
+  //     });
+
+  //       setShowSuccessModal(true);
+  //   } catch (error: any) {
+  //       Alert.alert('Error', error.response?.data?.error || 'Failed to enroll user');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+  const handleEnrollment = () => {
+  if (!userName.trim()) {
+    return Alert.alert('Error', 'Please enter a name');
+  }
+  if (!capturedImage) {
+    return Alert.alert('Error', 'Please capture a photo');
+  }
+  const id = uuidv4();  
+  setLoading(true);
+  uriToBase64(capturedImage)
+    .then(b64 => FaceAuth.enroll(id, userName.trim(), b64))
+    .then((resultJson: string) => {
+      const result = JSON.parse(resultJson);
+      if (result.status === 'ok') {
+        setShowSuccessModal(true);
+      } else {
+        Alert.alert('Enrollment failed', result.message || 'Unknown error');
+      }
+    })
+    .catch(err => {
+      console.error('Enrollment error:', err);
+      Alert.alert('Error', err.message || 'Enrollment encountered an error');
+    })
+    .finally(() => setLoading(false));
+};
+
 
   const handleSuccessModalClose = () => {
     setShowSuccessModal(false);
@@ -129,11 +186,11 @@ export default function EnrollmentScreen() {
   const renderProgressBar = () => (
     <View style={styles.progressContainer}>
       <View style={styles.progressBar}>
-        <View 
+        <View
           style={[
-            styles.progressFill, 
+            styles.progressFill,
             { width: `${(step / 3) * 100}%` }
-          ]} 
+          ]}
         />
       </View>
       <Text style={styles.progressText}>Step {step} of 3</Text>
@@ -333,8 +390,8 @@ export default function EnrollmentScreen() {
       <SafeAreaView style={styles.safeArea}>
         {renderHeader()}
         {renderProgressBar()}
-        
-        <ScrollView 
+
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>

@@ -1,6 +1,41 @@
-pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
-plugins { id("com.facebook.react.settings") }
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
-rootProject.name = 'MyfaceApp'
-include ':app'
-includeBuild('../node_modules/@react-native/gradle-plugin')
+pluginManagement {
+    // 1) Pull in both the React‑Native Gradle plugin and Chaquopy plugin
+    includeBuild("../node_modules/@react-native/gradle-plugin")
+    repositories {
+        gradlePluginPortal()      // for the React‑Native plugin itself
+        google()
+        mavenCentral()
+        maven { url = uri("https://chaquo.com/maven") } // for com.chaquo.python
+    }
+    plugins {
+        // match your RN version here:
+        id "com.facebook.react.settings" version "0.75.3"
+        // Chaquopy plugin:
+        id "com.chaquo.python"        version "16.1.0"
+    }
+}
+
+plugins {
+    // this comes *directly* after pluginManagement
+    id("com.facebook.react.settings")
+}
+
+dependencyResolutionManagement {
+    // allow plugins (like RN’s) to add their own repos without failing
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://chaquo.com/maven") }
+    }
+}
+
+rootProject.name = "MyfaceApp"
+include ':app', ':pyengine'
+// for React‑Native’s plugin DSL
+includeBuild("../node_modules/@react-native/gradle-plugin")
+
+// turn on autolinking from the settings plugin
+extensions.configure(com.facebook.react.ReactSettingsExtension) {
+    it.autolinkLibrariesFromCommand()
+}

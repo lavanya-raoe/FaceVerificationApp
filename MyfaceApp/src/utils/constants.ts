@@ -1,5 +1,5 @@
 // Server configuration
-export const SERVER_URL = 'http://192.168.0.105:5000';
+export const SERVER_URL = 'http://192.168.185.30:5000';
 export const REQUEST_TIMEOUT_MS = 15000;
 
 // API endpoints

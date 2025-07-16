@@ -1,0 +1,53 @@
+plugins {
+    id 'com.android.library'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace "com.example.pyengine"    // your python‐engine package
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+
+        python {
+            // Point to a Python 3.8 interpreter (Chaquopy 10.x only supports 3.8.x)
+            buildPython "C:/Users/lavan/AppData/Local/Programs/Python/Python310/python.exe"
+            pip {
+                install "numpy"
+                install "opencv-python"
+                install "Pillow"
+                install "torch==1.8.1"
+                install "requests"
+                install "torchvision==0.9.1"
+                install "tqdm"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    // if you need Cronet, etc.
+    implementation 'org.chromium.net:cronet-embedded:119.6045.31'
+    implementation "com.facebook.react:react-android"
+    // NO `implementation project(':app')` here!
+}

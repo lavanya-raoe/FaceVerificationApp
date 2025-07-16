@@ -10,14 +10,18 @@ import {
   ActivityIndicator,
   Animated,
   StatusBar,
+  NativeModules,
   ScrollView,
 } from 'react-native';
+import RNFS from 'react-native-fs';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { capturePhoto } from '../utils/capturePhoto';
 import axios from 'axios';
 import { RootStackParamList } from '../../App';
+import { SERVER_URL } from '../utils/constants';
+
 
 type VerificationScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Verification'>;
 
@@ -28,6 +32,7 @@ interface VerificationResult {
   threshold: number;
   verified: boolean;
   message?: string;
+  id?: string;
 }
 
 export default function VerificationScreen() {
@@ -36,8 +41,24 @@ export default function VerificationScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [step, setStep] = useState(1); // 1: Capture, 2: Processing, 3: Results
-  
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  async function uriToBase64(uri: string): Promise<string> {
+    if (uri.startsWith('data:')) {
+      return uri.split(',')[1];
+    }
+    const path = uri.replace(/^file:\/\//, '');
+    return RNFS.readFile(path, 'base64');
+  }
+
+  const { FaceAuth } = NativeModules as {
+    FaceAuth: {
+      enroll(userId: string, name: string, imageB64: string): Promise<string>;
+      verify(imageB64: string): Promise<string>;  
+       listAll(): Promise<string>;
+    }
+  };
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -60,34 +81,41 @@ export default function VerificationScreen() {
     }
   };
 
-  const handleVerification = async (imageData: string) => {
+
+  const handleVerification = (imageData: string) => {
     setLoading(true);
     setResult(null);
-    
-    try {
-      const response = await axios.post('http://192.168.0.105:5000/verify', {
-        image: imageData,
-      });
-      
-      const verificationResult: VerificationResult = {
-        match: response.data.match || 'Unknown',
-        confidence: response.data.confidence || 0,
-        cosine_similarity: response.data.cosine_similarity || 0,
-        threshold: response.data.threshold || 0.55,
-        verified: response.data.verified || false,
-        message: response.data.message,
-      };
-      
-      setResult(verificationResult);
-      setStep(3);
-    } catch (error: any) {
-      console.error('Verification error:', error);
-      Alert.alert('Error', error.response?.data?.error || 'Failed to verify user');
-      setStep(1);
-    } finally {
-      setLoading(false);
-    }
-  };
+    FaceAuth.listAll()
+      .then((json: string) => {
+        console.log('List of enrolled users:', json);
+      })
+    uriToBase64(imageData)
+      .then(b64 => FaceAuth.verify(b64))
+      .then((json: string) => {
+        const res = JSON.parse(json);
+        if (res.status === 'ok') {
+          setResult({
+            match: res.match,
+            confidence: res.confidence,            
+            cosine_similarity: res.cosine_similarity,
+            threshold: res.threshold,
+            verified: res.verified,
+            message: res.message,
+            id: res.id,
+          });
+          setStep(3);
+        } else {
+          throw new Error(res.message || 'Verification failed');
+        }
+      })
+      .catch((err: any) => {
+        console.error('Verification error:', err);
+        Alert.alert('Error', err.message || 'Failed to verify');
+        setStep(1);
+      })
+      .finally(() => setLoading(false));
+  }
+
 
   const handleRetry = () => {
     setStep(1);
@@ -110,11 +138,11 @@ export default function VerificationScreen() {
   const renderProgressBar = () => (
     <View style={styles.progressContainer}>
       <View style={styles.progressBar}>
-        <View 
+        <View
           style={[
-            styles.progressFill, 
+            styles.progressFill,
             { width: `${(step / 3) * 100}%` }
-          ]} 
+          ]}
         />
       </View>
       <Text style={styles.progressText}>Step {step} of 3</Text>
@@ -131,13 +159,20 @@ export default function VerificationScreen() {
       <View style={styles.captureSection}>
         <TouchableOpacity
           style={styles.captureButton}
-          onPress={handleCapturePhoto}>
+          onPress={async () => {
+            const uri = await capturePhoto();
+            if (uri) {
+              setCapturedImage(uri);
+              setStep(2);
+              handleVerification(uri);
+            }
+          }}>
           <View style={styles.captureFrame}>
             <Icon name="face-retouching-natural" size={40} color="#34C759" />
             <Text style={styles.captureText}>Tap to verify</Text>
           </View>
         </TouchableOpacity>
-        
+
         <View style={styles.captureInstructions}>
           <View style={styles.instructionItem}>
             <Icon name="visibility" size={20} color="#8E8E93" />
@@ -180,14 +215,14 @@ export default function VerificationScreen() {
             </View>
             <Text style={styles.processingStepText}>Face Detection</Text>
           </View>
-          
+
           <View style={styles.processingStep}>
             <View style={styles.processingStepIcon}>
               <Icon name="fingerprint" size={24} color="#007AFF" />
             </View>
             <Text style={styles.processingStepText}>Feature Extraction</Text>
           </View>
-          
+
           <View style={styles.processingStep}>
             <View style={styles.processingStepIcon}>
               <Icon name="compare" size={24} color="#007AFF" />
@@ -227,43 +262,59 @@ export default function VerificationScreen() {
           <View style={styles.resultImageContainer}>
             <Image source={{ uri: capturedImage }} style={styles.resultImage} />
             <View style={[
-              styles.resultBadge, 
+              styles.resultBadge,
               result?.verified ? styles.successBadge : styles.failureBadge
             ]}>
-              <Icon 
-                name={result?.verified ? "check-circle" : "cancel"} 
-                size={24} 
-                color="#FFFFFF" 
+              <Icon
+                name={result?.verified ? "check-circle" : "cancel"}
+                size={24}
+                color="#FFFFFF"
               />
             </View>
           </View>
         )}
 
         <View style={styles.resultDetails}>
+
+
+<View style={styles.resultCard}>
+            <Text style={styles.resultLabel}>User ID</Text>
+            <Text style={[
+              styles.resultValue,
+              result?.verified ? styles.successText : styles.failureText
+            ]}>
+              {result?.id || 'Unknown'}
+            </Text>
+          </View>
+
+
+
           <View style={styles.resultCard}>
             <Text style={styles.resultLabel}>Matched User</Text>
             <Text style={[
-              styles.resultValue, 
+              styles.resultValue,
               result?.verified ? styles.successText : styles.failureText
             ]}>
               {result?.match || 'Unknown'}
             </Text>
           </View>
 
+
+
           <View style={styles.resultCard}>
             <Text style={styles.resultLabel}>Confidence Level</Text>
             <View style={styles.confidenceContainer}>
               <Text style={[
                 styles.resultValue,
-                { color: getConfidenceColor(result?.confidence || 0) }
+                { color: getConfidenceColor(result?.cosine_similarity || 0) }
               ]}>
-                {((result?.confidence || 0) * 100).toFixed(1)}%
+                {((result?.cosine_similarity || 0) * 100).toFixed(1)}%
               </Text>
               <Text style={[
                 styles.confidenceLevel,
-                { color: getConfidenceColor(result?.confidence || 0) }
+                { color: getConfidenceColor(result?.cosine_similarity || 0) }
               ]}>
-                {getConfidenceLevel(result?.confidence || 0)}
+                {getConfidenceLevel(result?.cosine_similarity || 0)}
               </Text>
             </View>
           </View>
@@ -337,8 +388,8 @@ export default function VerificationScreen() {
       <SafeAreaView style={styles.safeArea}>
         {renderHeader()}
         {renderProgressBar()}
-        
-        <ScrollView 
+
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>

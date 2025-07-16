@@ -8,6 +8,7 @@ export const capturePhoto = (): Promise<string | null> => {
       quality: 0.8,
       maxWidth: 800,
       maxHeight: 600,
+      cameraType: 'front',
       includeBase64: true,
       storageOptions: {
         skipBackup: true,
